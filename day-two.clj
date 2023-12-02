@@ -20,7 +20,10 @@
 
 (defn parse-subset [subset]
   (let [all-cube-data (str/split (str/trim subset) #", ")]
-    (into {} (map parse-cube all-cube-data))))
+    (let [rgb-dictionary (into {} (map parse-cube all-cube-data))]
+         (apply vector (map
+                        (fn [color] (or (rgb-dictionary color) 0))
+                        ["red" "green" "blue"])))))
 
 (defn parse-game-line [line]
   (let [[game cubes-str] (str/split line #": ")
@@ -32,40 +35,26 @@
 (defn parse-games [data]
   (map parse-game-line data))
 
-(def part-one-cubes {"red" 12
-                      "green" 13
-                      "blue" 14})
+(def part-one-rgb [12 13 14])
 
-(defn game-possible? [game possible-cubes]
+(defn game-possible? [game [possible-r possible-g possible-b]]
   ;; does any subset of this game have more cubes than possible cubes?
-  (empty? (filter (fn subset-possible [subset]
-                    (let [impossible-colors (filter (fn color-possible [color]
-                                                      (> (or (subset color) 0) (possible-cubes color)))
-                                                    (keys possible-cubes))]
-                      (seq impossible-colors)))
-                  (second game))))
+  (boolean (every? (fn subset-possible [[subset-r subset-g subset-b]]
+           (and (<= subset-r possible-r)
+               (<= subset-g possible-g)
+               (<= subset-b possible-b))) (second game))))
 
-(defn part-one [data possible-cubes]
-  (reduce + (map first (filter (fn [game] (game-possible? game possible-cubes)) (parse-games data)))))
+(defn part-one [data possible-rgb]
+  (reduce + (map first (filter (fn [game] (game-possible? game possible-rgb)) (parse-games data)))))
 
-(defn max-cubes [game]
-  (let [subsets (second game)]
-    (loop [i 0
-           max-cubes-dictionary {"green" 0 "red" 0 "blue" 0}]
-      (if (= i (count subsets))
-        max-cubes-dictionary
-        (let [current-subset (nth subsets i)
-              new-max-cubes-dictionary (reduce (fn max-reducer [dict next-subset-key]
-                                                 (assoc dict next-subset-key (if (> (current-subset next-subset-key)
-                                                                                    (dict next-subset-key))
-                                                                               (current-subset next-subset-key)
-                                                                               (dict next-subset-key)
-                                                                               ))) max-cubes-dictionary (keys current-subset))]
-          (recur (inc i) new-max-cubes-dictionary))))))
+(defn max-rgb-for-subsets [subsets]
+  (map (fn max-color-at-index [color-index]
+         (apply max (map
+                     (fn nth-color[subset]
+                       (nth subset color-index)) subsets)) ) [0 1 2]))
 
 (defn min-viable-cubes-power [game]
-  (let [max-cubes-dictionary (max-cubes game)]
-    (apply * (map (fn [color] (max-cubes-dictionary color)) ["green" "red" "blue"]))))
+  (apply * (max-rgb-for-subsets (second game))))
 
 (defn part-two [data]
   (reduce + (map min-viable-cubes-power (parse-games data))))
