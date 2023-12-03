@@ -133,9 +133,10 @@
     (reduce + (reduce (fn [found-gear-ratios next-gear-set]
                         (let [neighbour-part-numbers (map first
                                                           (filter (fn [[number neighbours]]
-                                                                    (boolean (not-empty (set/intersection neighbours next-gear-set)))) numbers-info))]
+                                                                    (boolean (not-empty (set/intersection neighbours next-gear-set))))
+                                                                  numbers-info))]
                           (if (= (count neighbour-part-numbers) 2)
-                            ;; we found a gear, add it's gear ratio
+                            ;; we found a gear, add its gear ratio
                             (conj found-gear-ratios (apply * neighbour-part-numbers))
                             ;; we didn't find a near gear, so just continue with the ones we have already found
                             found-gear-ratios))) [] maybe-gear-info))))
