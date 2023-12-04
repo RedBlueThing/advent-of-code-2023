@@ -46,7 +46,7 @@
   (let [wins-for-cards (map wins-for-card (parse-cards data))
         indexed-wins-for-cards (map-indexed (fn [index wins] [index wins]) wins-for-cards)
         ;; just one for each card
-        starting-cards (apply vector (map (fn [index] 1) (range 0 (count wins-for-cards))))
+        starting-cards (vec (repeat (count wins-for-cards) 1))
         cards-with-copies (reduce (fn [current-cards [index wins]]
                                     (if (> wins 0)
                                       ;; we had wins so we need to update the number of following cards
