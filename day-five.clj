@@ -40,9 +40,26 @@
 
 (def real-data-raw (str/split-lines (slurp "day-five.txt")))
 
-(defn map-or-return [dictionary value]
-  ;; either map the value if it's in the dictionary, or return it
-  (or (dictionary value) value))
+(defn check-mapping [mapping value]
+  (let [[to-start from-start length] mapping]
+    (if (and (>= value from-start) (< value (+ from-start length)))
+      ;; it's a match
+      (+ to-start (- value from-start))
+      ;; no match, so nil
+      nil)))
+
+(defn map-or-return [mappings value]
+  ;; ok wait. If we use regular dictionaries, ie, this code
+  ;; (or (dictionary value) value)
+  ;; things get out of hand with the very big ranges in the real data.
+  ;; So instead let's just lookat the from and to info
+  (or (loop [i 0 maybe-found-mapping nil]
+     (if (or (= i (count mappings)) maybe-found-mapping)
+      ;; we found a mapping or ran out of mappings, so return the thing we maybe
+      ;; found.
+       maybe-found-mapping
+      ;; otherwise, keep looking
+       (recur (inc i) (check-mapping (nth mappings i) value)))) value))
 
 (defn map-seed-number-to-location [almanac seed-number]
   ;; an almanac is a series of dictionaries that map values
@@ -62,13 +79,13 @@
          (map-or-return temperature-to-humidity)
          (map-or-return humidity-to-location))))
 
-(assert (= (map-seed-number-to-location {:seed-to-soil {1 2}
-                                  :soil-to-fertilizer {2 3}
-                                  :fertilizer-to-water {}
-                                  :water-to-light {}
-                                  :light-to-temperature {}
-                                  :temperature-to-humidity {}
-                                  :humidity-to-location {}} 1) 3))
+(assert (= (map-seed-number-to-location {:seed-to-soil [[3 1 1]]
+                                  :soil-to-fertilizer []
+                                  :fertilizer-to-water []
+                                  :water-to-light []
+                                  :light-to-temperature []
+                                  :temperature-to-humidity []
+                                  :humidity-to-location []} 1) 3))
 
 (defn parse-numbers-str [numbers-str]
   (map
@@ -87,11 +104,11 @@
     (parse-numbers-str seed-numbers-str)))
 
 (defn range-of-values-for-mapping [[to-start from-start length]]
+  ;; mistakes were made
   (map (fn [index] [(+ from-start index) (+ to-start index)]) (range 0 length)))
 
 (defn create-almanac [parsed-mapping-data]
-  (let [into-dictionaries-vector (map (fn [[keyword mappings]] [keyword (into {} (mapcat range-of-values-for-mapping mappings))]) parsed-mapping-data)]
-    (into {} into-dictionaries-vector)))
+  (into {} parsed-mapping-data))
 
 (defn parse-data [data]
   (let [partitioned-data (filter (fn [segment] (not= (first segment) "")) (partition-by #(= "" %) data))
