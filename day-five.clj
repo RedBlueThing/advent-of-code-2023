@@ -38,7 +38,7 @@
                     "60 56 37"
                     "56 93 4"])
 
-(def real-data-raw (str/split-lines (slurp "day-five.txt")))
+(def real-data-raw (str/split-lines (slurp "day-five-narrow.txt")))
 
 (defn check-mapping [mapping value]
   (let [[to-start from-start length] mapping]
@@ -125,12 +125,6 @@
         mapped-seeds (map (fn [seed-number] (map-seed-number-to-location-memo almanac seed-number)) seeds)]
     (apply min mapped-seeds)))
 
-(defn parse-part-two-seeds [seeds]
-  ;; more mistakes were made
-  (let [partitioned-seeds (partition 2 seeds)]
-    (reduce (fn [new-seeds [start count]]
-              (concat new-seeds (map (fn [index] (+ start index)) (range 0 count)))) [] partitioned-seeds)))
-
 (defn part-one [data]
   (let [[seeds almanac] (parse-data data)
         mapped-seeds (map (fn [seed-number] (map-seed-number-to-location-memo almanac seed-number)) seeds)]
@@ -141,11 +135,19 @@
         partitioned-seeds (partition 2 seeds)]
     (reduce + (map second partitioned-seeds))))
 
+(defn stepped-range [start count step]
+  (->> (iterate #(+ % (max step 1)) start)
+       (take (/ count step))))
+
 (defn map-seed-numbers-to-min-location [almanac [start count]]
   (apply min (map (fn [index]
-                    (if (= (mod index 1000) 0)
-                      (println "%d mapping" (System/currentTimeMillis) start index))
-                    (map-seed-number-to-location-memo almanac (+ start index))) (range 0 count))))
+                    (if (= (mod index 1000000) 0)
+                      (println (format "%f" (float (/ index count)))))
+                    (map-seed-number-to-location-memo almanac (+ start index)))
+                  (stepped-range 0 count (int (/ count 1000000)))
+                  ;; (range 0 count)
+                  ;;
+                  )))
 
 (defn part-two [data]
   (let [[seeds almanac] (parse-data data)
@@ -162,4 +164,3 @@
                      partitioned-seeds)]
     (println (format "Blocking on %d futures" (count futures)))
     (apply min (map deref futures))))
-
