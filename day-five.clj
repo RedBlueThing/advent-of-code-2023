@@ -41,7 +41,7 @@
 (def real-data-raw (str/split-lines (slurp "day-five.txt")))
 
 (defn check-mapping [mapping value]
-  (let [[to-start from-start length] mapping]
+  (let [[from-start to-start length] mapping]
     (if (and (>= value from-start) (< value (+ from-start length)))
       ;; it's a match
       (+ to-start (- value from-start))
@@ -61,33 +61,22 @@
       ;; otherwise, keep looking
        (recur (inc i) (check-mapping (nth mappings i) value)))) value))
 
-(defn map-seed-number-to-location [almanac seed-number]
-  ;; an almanac is a series of dictionaries that map values
-  (let [{seed-to-soil :seed-to-soil
-         soil-to-fertilizer :soil-to-fertilizer
-         fertilizer-to-water :fertilizer-to-water
-         water-to-light :water-to-light
-         light-to-temperature :light-to-temperature
-         temperature-to-humidity :temperature-to-humidity
-         humidity-to-location :humidity-to-location} almanac]
-    (->> seed-number
-         (map-or-return seed-to-soil)
-         (map-or-return soil-to-fertilizer)
-         (map-or-return fertilizer-to-water)
-         (map-or-return water-to-light)
-         (map-or-return light-to-temperature)
-         (map-or-return temperature-to-humidity)
-         (map-or-return humidity-to-location))))
-
-(def map-seed-number-to-location-memo (memoize map-seed-number-to-location))
-
-(assert (= (map-seed-number-to-location {:seed-to-soil [[3 1 1]]
-                                         :soil-to-fertilizer []
-                                         :fertilizer-to-water []
-                                         :water-to-light []
-                                         :light-to-temperature []
-                                         :temperature-to-humidity []
-                                         :humidity-to-location []} 1) 3))
+(defn map-location-to-seed-number [almanac location]
+  (let [{soil-to-seed :soil-to-seed
+         fertilizer-to-soil :fertilizer-to-soil
+         water-to-fertilizer :water-to-fertilizer
+         light-to-water :light-to-water
+         temperature-to-light :temperature-to-light
+         humidity-to-temperature :humidity-to-temperature
+         location-to-humidity :location-to-humidity} almanac]
+    (->> location
+         (map-or-return location-to-humidity)
+         (map-or-return humidity-to-temperature)
+         (map-or-return temperature-to-light)
+         (map-or-return light-to-water)
+         (map-or-return water-to-fertilizer)
+         (map-or-return fertilizer-to-soil)
+         (map-or-return soil-to-seed))))
 
 (defn parse-numbers-str [numbers-str]
   (map
@@ -95,19 +84,20 @@
      (Long/parseLong value-str))
    (str/split numbers-str #" ")))
 
+
+(defn reverse-mapping-keyword [s]
+  (let [[from to] (str/split s #"-to-")]
+    (str to "-to-" from)))
+
 (defn parse-mapping-data [mapping-data-entry]
   (let [dictionary-key-str (first mapping-data-entry)
-        trimmed-dictionary-key (keyword (subs dictionary-key-str 0 (- (count dictionary-key-str) 5)))
+        trimmed-dictionary-key (keyword (reverse-mapping-keyword (subs dictionary-key-str 0 (- (count dictionary-key-str) 5))))
         mappings (map parse-numbers-str (rest mapping-data-entry))]
     [trimmed-dictionary-key mappings]))
 
 (defn parse-seed-data [seed-data]
   (let [seed-numbers-str (second (str/split seed-data #": "))]
     (parse-numbers-str seed-numbers-str)))
-
-(defn range-of-values-for-mapping [[to-start from-start length]]
-  ;; mistakes were made
-  (map (fn [index] [(+ from-start index) (+ to-start index)]) (range 0 length)))
 
 (defn create-almanac [parsed-mapping-data]
   (into {} parsed-mapping-data))
@@ -120,46 +110,16 @@
         almanac (create-almanac parsed-mapping-data)]
     [seed-data almanac]))
 
-(defn part-one [data]
-  (let [[seeds almanac] (parse-data data)
-        mapped-seeds (map (fn [seed-number] (map-seed-number-to-location-memo almanac seed-number)) seeds)]
-    (apply min mapped-seeds)))
+(defn min-valid-location [data check-seed-fn]
+  (let [[seeds almanac] (parse-data data)]
+    (loop [current-location 1
+           min-valid-location nil]
+      (if (or (= current-location 99999999) min-valid-location)
+        min-valid-location
+        (recur (inc current-location) (check-seed-fn seeds current-location (map-location-to-seed-number almanac current-location)))))))
 
-(defn parse-part-two-seeds [seeds]
-  ;; more mistakes were made
-  (let [partitioned-seeds (partition 2 seeds)]
-    (reduce (fn [new-seeds [start count]]
-              (concat new-seeds (map (fn [index] (+ start index)) (range 0 count)))) [] partitioned-seeds)))
-
-(defn part-one [data]
-  (let [[seeds almanac] (parse-data data)
-        mapped-seeds (map (fn [seed-number] (map-seed-number-to-location-memo almanac seed-number)) seeds)]
-    (apply min mapped-seeds)))
-
-(defn part-two-test [data]
-  (let [[seeds almanac] (parse-data data)
-        partitioned-seeds (partition 2 seeds)]
-    (reduce + (map second partitioned-seeds))))
-
-(defn map-seed-numbers-to-min-location [almanac [start count]]
-  (apply min (map (fn [index]
-                    (if (= (mod index 1000) 0)
-                      (println "%d mapping" (System/currentTimeMillis) start index))
-                    (map-seed-number-to-location-memo almanac (+ start index))) (range 0 count))))
-
-(defn part-two [data]
-  (let [[seeds almanac] (parse-data data)
-        partitioned-seeds (partition 2 seeds)]
-    (apply min (map (fn [partitioned-seed]
-                      (map-seed-numbers-to-min-location almanac partitioned-seed))
-                    partitioned-seeds))))
-
-(defn part-two-threaded [data]
-  (let [[seeds almanac] (parse-data data)
-        partitioned-seeds (partition 2 seeds)
-        futures (map (fn [partitioned-seed]
-                       (future (map-seed-numbers-to-min-location almanac partitioned-seed)))
-                     partitioned-seeds)]
-    (println (format "Blocking on %d futures" (count futures)))
-    (apply min (map deref futures))))
-
+(defn part-one-check-seed-fn [seeds location seed-number-to-check]
+  ;; is the location one of the seeds (just a list of seed numbers)
+  (if (some #(= % seed-number-to-check) seeds)
+    location
+    nil))
