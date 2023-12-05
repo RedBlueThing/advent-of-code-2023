@@ -79,13 +79,15 @@
          (map-or-return temperature-to-humidity)
          (map-or-return humidity-to-location))))
 
+(def map-seed-number-to-location-memo (memoize map-seed-number-to-location))
+
 (assert (= (map-seed-number-to-location {:seed-to-soil [[3 1 1]]
-                                  :soil-to-fertilizer []
-                                  :fertilizer-to-water []
-                                  :water-to-light []
-                                  :light-to-temperature []
-                                  :temperature-to-humidity []
-                                  :humidity-to-location []} 1) 3))
+                                         :soil-to-fertilizer []
+                                         :fertilizer-to-water []
+                                         :water-to-light []
+                                         :light-to-temperature []
+                                         :temperature-to-humidity []
+                                         :humidity-to-location []} 1) 3))
 
 (defn parse-numbers-str [numbers-str]
   (map
@@ -120,6 +122,44 @@
 
 (defn part-one [data]
   (let [[seeds almanac] (parse-data data)
-        mapped-seeds (map (fn [seed-number] (map-seed-number-to-location almanac seed-number)) seeds)]
+        mapped-seeds (map (fn [seed-number] (map-seed-number-to-location-memo almanac seed-number)) seeds)]
     (apply min mapped-seeds)))
+
+(defn parse-part-two-seeds [seeds]
+  ;; more mistakes were made
+  (let [partitioned-seeds (partition 2 seeds)]
+    (reduce (fn [new-seeds [start count]]
+              (concat new-seeds (map (fn [index] (+ start index)) (range 0 count)))) [] partitioned-seeds)))
+
+(defn part-one [data]
+  (let [[seeds almanac] (parse-data data)
+        mapped-seeds (map (fn [seed-number] (map-seed-number-to-location-memo almanac seed-number)) seeds)]
+    (apply min mapped-seeds)))
+
+(defn part-two-test [data]
+  (let [[seeds almanac] (parse-data data)
+        partitioned-seeds (partition 2 seeds)]
+    (reduce + (map second partitioned-seeds))))
+
+(defn map-seed-numbers-to-min-location [almanac [start count]]
+  (apply min (map (fn [index]
+                    (if (= (mod index 1000) 0)
+                      (println "%d mapping" (System/currentTimeMillis) start index))
+                    (map-seed-number-to-location-memo almanac (+ start index))) (range 0 count))))
+
+(defn part-two [data]
+  (let [[seeds almanac] (parse-data data)
+        partitioned-seeds (partition 2 seeds)]
+    (apply min (map (fn [partitioned-seed]
+                      (map-seed-numbers-to-min-location almanac partitioned-seed))
+                    partitioned-seeds))))
+
+(defn part-two-threaded [data]
+  (let [[seeds almanac] (parse-data data)
+        partitioned-seeds (partition 2 seeds)
+        futures (map (fn [partitioned-seed]
+                       (future (map-seed-numbers-to-min-location almanac partitioned-seed)))
+                     partitioned-seeds)]
+    (println (format "Blocking on %d futures" (count futures)))
+    (apply min (map deref futures))))
 
