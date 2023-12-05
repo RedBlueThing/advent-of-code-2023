@@ -123,3 +123,20 @@
   (if (some #(= % seed-number-to-check) seeds)
     location
     nil))
+
+(defn part-two-check-seed-fn [seeds location seed-number-to-check]
+  ;; is the location one of the seeds (just a list of seed numbers)
+  (let [partitioned-seeds (partition 2 seeds)]
+    (if (some (fn [[start count]]
+                (and (>= seed-number-to-check start) (< seed-number-to-check (+ start count)))) partitioned-seeds)
+      location
+      nil)))
+
+(defn scan-part-two [data start check-seed-fn]
+  (let [[seeds almanac] (parse-data data)]
+    (loop [current-location start
+           locations []]
+      (if (< current-location (- start 100000))
+        locations
+        (recur (dec current-location) (let [maybe-location (check-seed-fn seeds current-location (map-location-to-seed-number almanac current-location))]
+                                        (if maybe-location (conj locations maybe-location) locations)))))))
