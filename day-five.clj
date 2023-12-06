@@ -38,7 +38,7 @@
                     "60 56 37"
                     "56 93 4"])
 
-(def real-data-raw (str/split-lines (slurp "day-five-narrow.txt")))
+(def real-data-raw (str/split-lines (slurp "day-five.txt")))
 
 (defn check-mapping [mapping value]
   (let [[to-start from-start length] mapping]
@@ -144,10 +144,7 @@
                     (if (= (mod index 1000000) 0)
                       (println (format "%f" (float (/ index count)))))
                     (map-seed-number-to-location-memo almanac (+ start index)))
-                  (stepped-range 0 count (int (/ count 1000000)))
-                  ;; (range 0 count)
-                  ;;
-                  )))
+                  (stepped-range 0 count (int (/ count 10000))))))
 
 (defn part-two [data]
   (let [[seeds almanac] (parse-data data)
