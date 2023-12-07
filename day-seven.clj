@@ -116,17 +116,6 @@
   (let [[hand bid] (str/split line #" ")]
     [hand (Integer/parseInt bid)]))
 
-(defn part-one [data]
-  (let [hands-and-bids (map parse-hand-bid-line data)
-        sorted-hands-and-bids (sort (fn comparitor [[first-hand b1] [second-hand b2]]
-                                      (hand-comparitor
-                                       first-hand
-                                       second-hand
-                                       part-one-card-strength-scores
-                                       part-one-type-for-hand)) hands-and-bids)]
-
-    (reduce + (map-indexed (fn [i [hand bid]] (* bid (inc i)))(reverse sorted-hands-and-bids)))))
-
 (defn maybe-upgrade-hand-type [hand]
   (let [card-counts (hand-card-counts hand)
         candidate-dictionary (dissoc card-counts \J)
@@ -145,13 +134,19 @@
       ;; if there are no jokers, it's just a normal hand type check
       (part-one-type-for-hand hand))))
 
-(defn part-two [data]
+(defn solve [data part-card-strength-scores part-type-for-hand]
   (let [hands-and-bids (map parse-hand-bid-line data)
         sorted-hands-and-bids (sort (fn comparitor [[first-hand b1] [second-hand b2]]
                                       (hand-comparitor
                                        first-hand
                                        second-hand
-                                       part-two-card-strength-scores
-                                       part-two-type-for-hand)) hands-and-bids)]
+                                       part-card-strength-scores
+                                       part-type-for-hand)) hands-and-bids)]
 
     (reduce + (map-indexed (fn [i [hand bid]] (* bid (inc i))) (reverse sorted-hands-and-bids)))))
+
+(defn part-one [data]
+  (solve data part-one-card-strength-scores part-one-type-for-hand))
+
+(defn part-two [data]
+  (solve data part-two-card-strength-scores part-two-type-for-hand))
