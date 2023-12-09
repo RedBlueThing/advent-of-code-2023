@@ -24,28 +24,28 @@
 (defn sequence-resolved [sequence]
   (= (count (set sequence)) 1))
 
-(defn propagate [derived-sequences value val-pos-fn val-fn]
+(defn propagate [derived-sequences value]
   (if (= (count derived-sequences) 0)
     value
-    (propagate (butlast derived-sequences) (val-fn (val-pos-fn (last derived-sequences)) value) val-pos-fn val-fn)))
+    (propagate (butlast derived-sequences) (+ (last (last derived-sequences)) value))))
 
-(defn get-value [sequence val-pos-fn val-fn]
+(defn get-value [sequence]
   (loop [derived-sequences []
          current-sequence sequence]
     (let [gaps-for-current-sequence (gaps-for-sequence current-sequence)]
       (if (sequence-resolved gaps-for-current-sequence)
         ;; we are done, time to work out the next value for all the derived sequences
-        (propagate (conj derived-sequences current-sequence) (val-pos-fn gaps-for-current-sequence) val-pos-fn val-fn)
+        (propagate (conj derived-sequences current-sequence) (last gaps-for-current-sequence))
         ;; recurse in with the gaps we just got
         (recur (conj derived-sequences current-sequence) gaps-for-current-sequence)))))
 
 (defn part-one [data]
   (let [sequence-data (map parse-line data)]
-    (reduce + (map (fn [sequence] (get-value sequence last +)) sequence-data))))
+    (reduce + (map get-value sequence-data))))
 
 (defn part-two [data]
   (let [sequence-data (map parse-line data)]
-    (reduce + (map (fn [sequence] (get-value sequence first -)) sequence-data))))
+    (reduce + (map (fn [sequence] (get-value (reverse sequence))) sequence-data))))
 
 
 
