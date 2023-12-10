@@ -32,7 +32,7 @@
 
 (defn row-and-column [map-data index]
   (let [[width height buffer] map-data]
-    [(int (/ index height)) (mod index width)]))
+    [(int (/ index width)) (mod index width)]))
 
 (defn index-for-row-and-column [map-data row column]
   ;; check if the row and column is in range and return the index if it is
@@ -84,7 +84,7 @@
         exits (exits-for-location map-data current)]
     (first (filter (fn [index] (not= index previous)) exits))))
 
-(defn part-one [data]
+(defn loop-for-map [data]
   (let [map-data (read-map data)
         index-for-start (find-start map-data)
         [path-one-start path-two-start] (exits-for-start-location map-data index-for-start)]
@@ -92,7 +92,11 @@
       (let [[path-one path-two] neighbour-paths]
         (if (= (last path-one) (last path-two))
           ;; we are done
-          (count path-one)
+          [(count path-one) (concat path-one (reverse (butlast path-two)))]
           ;; keep going
           (recur [(conj path-one (next-index-for-path map-data path-one))
-                 (conj path-two (next-index-for-path map-data path-two))]))))))
+                  (conj path-two (next-index-for-path map-data path-two))]))))))
+
+(defn part-one [data]
+  (let [[longest-path entire-loop] (loop-for-map data)]
+    longest-path))
