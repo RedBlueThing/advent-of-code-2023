@@ -126,41 +126,46 @@
         ;; group, then all we can have is an operational spring next
         #{\.}))))
 
-(defn recurse-valid-arrangements [springs current-contiguous-failed-springs active-failed-spring-group remaining-groups]
-  (if (empty? springs)
-    ;; we checked the entire string and there were no remaining groups we can return 1 (ie a valid path)
-    (do
-      ;; (println "We got to the end of a path and remaining groups were " remaining-groups " and contiguous-failed-springs was " current-contiguous-failed-springs)
-      (if (or (empty? remaining-groups) (and (= (count remaining-groups) 1) (= (first remaining-groups) current-contiguous-failed-springs))) 1 0))
-    (let [valid-springs (valid-springs-given-groups current-contiguous-failed-springs active-failed-spring-group remaining-groups)
-          potential-springs-for-next-index (case (first springs)
+(def recurse-valid-arrangements
+  (memoize (fn [springs current-contiguous-failed-springs active-failed-spring-group remaining-groups]
+             (if (empty? springs)
+               ;; we checked the entire string and there were no remaining groups we can return 1 (ie a valid path)
+               (do
+                 ;; (println "We got to the end of a path and remaining groups were " remaining-groups " and contiguous-failed-springs was " current-contiguous-failed-springs)
+                 (if (or (empty? remaining-groups) (and (= (count remaining-groups) 1) (= (first remaining-groups) current-contiguous-failed-springs))) 1 0))
+               (let [valid-springs (valid-springs-given-groups current-contiguous-failed-springs active-failed-spring-group remaining-groups)
+                     potential-springs-for-next-index (case (first springs)
                                              ;; Operational
-                                             \. [\.]
+                                                        \. [\.]
                                              ;; Fail
-                                             \# [\#]
+                                                        \# [\#]
                                              ;; Unknown
-                                             \? [\# \.])
-          available-springs-for-next-index (filter valid-springs potential-springs-for-next-index)]
-      (if (empty? available-springs-for-next-index)
-        ;; If there are no available springs to pick, then we can't continue down
-        ;; this recursive path and just return zero
-        0
-        ;; otherwise we continue to recurse for each of the
-        ;; available-springs-for-next-index
-        (reduce + (map (fn [available-spring]
-                         (case available-spring
-                           ;; we are trying an operation spring, if previously
-                           ;; there was an active-failed-spring-group we need to
-                           ;; remove the previously active group
-                           \. ((memoize recurse-valid-arrangements) (rest springs) 0 false (if active-failed-spring-group (rest remaining-groups) remaining-groups))
-                           \# ((memoize recurse-valid-arrangements) (rest springs) (inc current-contiguous-failed-springs) true remaining-groups)))
-                       available-springs-for-next-index))))))
+                                                        \? [\# \.])
+                     available-springs-for-next-index (filter valid-springs potential-springs-for-next-index)]
+                 (if (empty? available-springs-for-next-index)
+                   ;; If there are no available springs to pick, then we can't continue down
+                   ;; this recursive path and just return zero
+                   0
+                   ;; otherwise we continue to recurse for each of the
+                   ;; available-springs-for-next-index
+                   (reduce + (map (fn [available-spring]
+                                    (case available-spring
+                                      ;; we are trying an operation spring, if previously
+                                      ;; there was an active-failed-spring-group we need to
+                                      ;; remove the previously active group
+                                      \. (recurse-valid-arrangements (rest springs) 0 false (if active-failed-spring-group (rest remaining-groups) remaining-groups))
+                                      \# (recurse-valid-arrangements (rest springs) (inc current-contiguous-failed-springs) true remaining-groups)))
+                                  available-springs-for-next-index))))))))
+
 
 (defn solve-last-v2 [data]
   (reduce + (map (fn [[springs spring-unknowns groups]] (recurse-valid-arrangements springs 0 false groups)) [(last (read-data data))])))
 
 (defn solve-v2 [data]
-  (reduce + (map (fn [[springs spring-unknowns groups]] (recurse-valid-arrangements springs 0 false groups)) (read-data data))))
+  (reduce + (map (fn [[springs spring-unknowns groups]] (do
+                                                          (println springs)
+                                                          (println groups)
+                                                          (recurse-valid-arrangements springs 0 false groups))) (read-data data))))
 
 (defn part-two [data]
   (solve-v2 (map update-for-part-two data)))
