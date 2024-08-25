@@ -135,11 +135,11 @@
                  (if (or (empty? remaining-groups) (and (= (count remaining-groups) 1) (= (first remaining-groups) current-contiguous-failed-springs))) 1 0))
                (let [valid-springs (valid-springs-given-groups current-contiguous-failed-springs active-failed-spring-group remaining-groups)
                      potential-springs-for-next-index (case (first springs)
-                                             ;; Operational
+                                                        ;; Operational
                                                         \. [\.]
-                                             ;; Fail
+                                                        ;; Fail
                                                         \# [\#]
-                                             ;; Unknown
+                                                        ;; Unknown
                                                         \? [\# \.])
                      available-springs-for-next-index (filter valid-springs potential-springs-for-next-index)]
                  (if (empty? available-springs-for-next-index)
