@@ -18,17 +18,14 @@
 (def real-data-raw (str/split-lines (slurp "day-fourteen.txt")))
 
 (defn rotate-data-90-cw [data]
+  ;; this works for row data
   (apply mapv str (map vec (reverse data))))
-
-(defn rotate-data-180 [data]
-  (mapv #(apply str (reverse %)) (reverse data)))
-
-(defn rotate-data-90-ccw [data]
-  (apply mapv str (reverse (map vec data))))
 
 (defn rows-to-columns [data]
   ;; convert the data into a vector of columns (instead of the rows we read in)
   (apply mapv str (map vec data)))
+
+(def columns-to-rows rows-to-columns)
 
 (defn weigh-column [column]
   ;; given a string that represents a column where zero is the edge we are
@@ -73,7 +70,7 @@
                     ;; otherwise we move past the square rock without any changes
                     [(+ i (inc square-rock-index)) column]))))))
 
-(defn tilt-column [column]
+(defn tilt-column-impl [column]
   ;; Slide any \O characters towards zero (stopping_if they hit a \# or \O)
   (loop [i  0
          remaining-column column]
@@ -82,4 +79,39 @@
       (let [[next-i new-remaining-column] (slide-to i remaining-column)]
         (recur next-i new-remaining-column)))))
 
+(def tilt-column (memoize tilt-column-impl))
+
 (reduce + (map (fn [data] (weigh-column (tilt-column data))) (rows-to-columns test-data-raw)))
+
+(def part-two-cycles 1000000000)
+
+(defn tilt-board-impl [board-data]
+  (map (fn [data] (tilt-column data)) board-data))
+
+(def tilt-board (memoize tilt-board-impl))
+
+(defn rotate-columns-90-cw [data]
+  (mapv #(apply str %) (reverse (apply mapv vector (map vec data)))))
+
+(defn run-cycle-impl [data]
+  (-> data
+      tilt-board
+      rotate-columns-90-cw
+      tilt-board
+      rotate-columns-90-cw
+      tilt-board
+      rotate-columns-90-cw
+      tilt-board
+      rotate-columns-90-cw))
+
+(def run-cycle (memoize run-cycle-impl))
+
+(defn part-two-data [data cycles]
+  (loop [i 0
+         current-data data]
+    (if (= i cycles)
+      current-data
+      (recur (inc i) (run-cycle current-data)))))
+
+(defn part-two [data cycles]
+  (reduce + (map (fn [column-data] (weigh-column column-data)) (part-two-data data cycles))))
