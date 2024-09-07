@@ -70,8 +70,8 @@
            (if (nil? slot-index-of-matching-label)
               ;; if a lens with the label isn't in the box, do nothing
              slots
-              ;; otherwise remove that existing lense
-             (apply vector (drop-nth slot-index-of-matching-label slots))))))
+              ;; otherwise remove that existing lens
+             (vec (drop-nth slot-index-of-matching-label slots))))))
 
 (defn operation-reducer [boxes operation]
   (let [{box-number :box-number symbol :symbol} operation
@@ -81,7 +81,7 @@
       \- (assoc boxes box-number (minus-operation-to-box box operation)))))
 
 (defn process-operations [operations]
-  (let [boxes (apply vector (map (fn [box-number] {:box-number box-number :slots []}) (range 0 256)))]
+  (let [boxes (vec (map (fn [box-number] {:box-number box-number :slots []}) (range 0 256)))]
     (reduce operation-reducer boxes operations)))
 
 (defn focusing-power [box]
