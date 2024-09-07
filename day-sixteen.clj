@@ -83,9 +83,9 @@
   (doseq [[i v] (map-indexed (fn [i v] [i v]) data)]
     (println (map count v) i)))
 
-(defn simulate-round [[contraption energized active-beams]]
+(defn simulate-round-impl [[contraption energized active-beams]]
   (let [
-        ;; check if a beam has visited its current location in its current direction before
+        ;; check if a beam has visited its current location in a compatible direction before
         unique-active-beams (filter-for-revisit contraption energized active-beams)
         ;; first update the record of energized cells
         new-energized (reduce apply-energy-reducer energized unique-active-beams)
@@ -96,20 +96,37 @@
       (dump new-energized))
     [contraption new-energized new-active-beams]))
 
+(def simulate-round (memoize simulate-round-impl))
+
 (defn count-energized [energized]
   (reduce + (map (fn [energized-row] (reduce + (map (fn [energized-directions] (if (empty? energized-directions) 0 1))energized-row))) energized)))
 
-(defn simulate-all-rounds [data]
+(defn simulate-all-rounds [data beam-start]
   (let [rows (count data)
         columns (count (first data))]
     (loop [contraption data
            energized (vec (map (fn [i] (vec (repeat columns #{}))) (range 0 rows)))
-           active-beams [[0 0 :right]]]
+           active-beams [beam-start]]
       (if (empty? active-beams)
         energized
         (let [[new-contraption new-energized new-active-beams] (simulate-round [contraption energized active-beams])]
           (recur new-contraption new-energized new-active-beams))))))
 
 (defn part-one [data]
-  (count-energized (simulate-all-rounds data)))
+  (count-energized (simulate-all-rounds data [0 0 :right])))
 
+(defn potential-starting-beams [data]
+  (let [rows (count data)
+        columns (count (first data))]
+    (mapcat identity [;; from top going down
+                      (map (fn [column] [0 column :down]) (range 0 columns))
+                      ;; from bottom going up
+                      (map (fn [column] [(dec rows) column :up]) (range 0 columns))
+                      ;; from left going right
+                      (map (fn [row] [row 0 :right]) (range 0 rows))
+                      ;; from right going left
+                      (map (fn [row] [row (dec columns) :left]) (range 0 rows))])))
+
+(defn part-two [data]
+  (let [all-round-results (map (fn [beam-start] (count-energized (simulate-all-rounds data beam-start))) (potential-starting-beams data))]
+    (apply max all-round-results)))
