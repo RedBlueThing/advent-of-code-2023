@@ -39,7 +39,7 @@
 
 (def max-moves-without-turns 3)
 
-(defn allowed-moves-at-location-in-direction [data [[row column] current-direction no-turn-count heat-loss]]
+(defn core-allowed-states-at-location-in-direction [data [[row column] current-direction no-turn-count heat-loss]]
   (let [allowed-directions (case current-direction
                              :left [:left :up :down]
                              :right [:right :up :down]
@@ -61,52 +61,18 @@
           ;; get the locations for the moves we decided on
           (map (fn [new-direction] (row-and-column-in-direction row column new-direction)) filtered-allowed-directions)))))
 
-(defn prefer-move-instructions? [new-move-instructions existing-move-instructions]
-  (let [{new-no-turn-count :no-turn-count
-         new-direction :direction
-         new-current-heat-loss :current-heat-loss} new-move-instructions
-        {existing-no-turn-count :no-turn-count
-         existing-direction :direction
-         existing-current-heat-loss :current-heat-loss} existing-move-instructions]
-    (assert (= new-direction existing-direction))
-    (or (< new-current-heat-loss existing-current-heat-loss)
-        (and (= new-current-heat-loss existing-current-heat-loss) (< new-no-turn-count existing-no-turn-count)))))
+(def allowed-states-at-location-in-direction (memoize core-allowed-states-at-location-in-direction))
 
-(defn consolidate-moves [moves]
-  ;; Where a move looks like:
-  ;; [[row column] {:no-turn-count 0, :direction :down, :current-heat-loss 1}]
-
-  ;; Multiple directions on the current node can map to the same direction on
-  ;; neighbour nodes. In that scenario we pick the "move" with the lowest
-  ;; current-heat-loss. With matching current-heat-loss we will pick the move with the
-  ;; lowest no-turn-count.
-  (reduce (fn [consolidated-moves move]
-            (let [[move-address move-instruction] move
-                  existing-move-instruction-to-location (consolidated-moves move-address)]
-              (if (nil? existing-move-instruction-to-location)
-                (assoc consolidated-moves move-address move-instruction)
-                ;; work out if this move is better than the existing one
-                (if (prefer-move-instructions? move-instruction existing-move-instruction-to-location)
-                  (assoc consolidated-moves move-address move-instruction)
-                    ;; otherwise just leave as is
-                  consolidated-moves)))) {} moves))
-
-(defn smallest-heat-loss-for-node [distances-by-direction]
-  ;; Returns the shortest path we have found to this node from ay direction. If
-  ;; we haven't found this node (empty distances-by-direction) then the shortest
-  ;; path is infinite.
-  (if (empty? distances-by-direction)
-    { :current-heat-loss ##Inf :no-turn-count ##Inf }
-    (first (sort (fn [x y] (< (x :current-heat-loss) (y :current-heat-loss))) distances-by-direction))))
-
-(defn smallest-finite-distance [nodes]
-  ;; Run through our unvisited nodes and find the node with the smallest finite
-  ;; distance from any direction.
-  (first (sort (fn [first last] (let [first-heat-loss (smallest-heat-loss-for-node (second first))
-                                      second-heat-loss (smallest-heat-loss-for-node (second last))]
-                                  (or (< (first-heat-loss :current-heat-loss) (second-heat-loss :current-heat-loss))
-                                      (and (= (first-heat-loss :current-heat-loss) (second-heat-loss :current-heat-loss))
-                                           (< (first-heat-loss :no-turn-count) (second-heat-loss :no-turn-count)))))) nodes)))
+(defn sorted-states [unvisisted]
+  ;; Run through our unvisited nodes and sort by the smallest finite
+  ;; distance
+  (sort (fn [first last] (let [[first-address {first-direction :direction
+                                               first-current-heat-loss :current-heat-loss
+                                               first-no-turn-count :no-turn-count}] first
+                               [last-address {last-direction :direction
+                                              last-current-heat-loss :current-heat-loss
+                                              last-no-turn-count :no-turn-count}] last]
+                           (< first-current-heat-loss last-current-heat-loss))) unvisisted))
 
 ;; Dijkstra's
 
@@ -148,10 +114,11 @@
 
 ;; hard coded start location
 (def start-node [0 0])
-;; hard code the distances by direction, given top/left, we enter by top left
-;; and have zero current steps.
-(def start-node-distances [{:direction :down :current-heat-loss 0 :no-turn-count 0}
-                           {:direction :right :current-heat-loss 0 :no-turn-count 0}])
+
+;; Our start states are that we entered the start-node from the top and the
+;; left, so travelling down and right, and have zero no-turn-count.
+(def start-states [[start-node {:direction :down :current-heat-loss 0 :no-turn-count 0}]
+                   [start-node {:direction :right :current-heat-loss 0 :no-turn-count 0}]])
 
 ;; given the data get the target node (currently bottom right)
 (defn target-node [data]
@@ -160,50 +127,41 @@
     ;; get the bottom right node given the data
     [last-column-index last-row-index]))
 
-(defn finished-dijkstra? [data current-node]
+(defn finished-dijkstra? [data current-state]
   (let [current-target-node (target-node data)
-        [current-node-address current-node-distances-by-direction] current-node]
-    (or
-     (empty? current-node-distances-by-direction)
-     (nil? current-node)
-     (= current-node-address current-target-node))))
+        [current-state-address current-state-data] current-state]
+    (= current-state-address current-target-node)))
 
-(defn dijkstra-update-neighbours [data unvisited current-node]
-  ;; For each of the directions associated with the current node, work out
-  ;; allowed neighbour nodes (with associated directions and new no-turn-counts
-  ;; and steps). Once we have the moves for each neighbour, we need to
-  ;; consolidate them (consolidate-moves)
-  (let [[current-node-address current-node-distances-by-direction] current-node
-
-        new-moves (mapcat identity (map (fn [{direction :direction
-                                              current-heat-loss :current-heat-loss
-                                              no-turn-count :no-turn-count}]
-                                          (allowed-moves-at-location-in-direction data [current-node-address direction no-turn-count current-heat-loss])) current-node-distances-by-direction))
-
-        consolidated-moves (consolidate-moves new-moves)
-        ;; only included moves to nodes in the unvisited
-        filtered-consolidated-moves (into {} (filter (fn [[k v]] (not (nil? (unvisited k)))) consolidated-moves))]
-    (reduce (fn [updated-unvisited move] (let [existing-distances-by-direction (updated-unvisited (first move))]
-                                           (assoc updated-unvisited (first move) (conj existing-distances-by-direction (second move))))) unvisited filtered-consolidated-moves)))
-
-;; (assert (= (dijkstra-update-neighbours test-data-raw {} [[0 0] start-node-distances]) []))
+(defn dijkstra-new-neighbour-states [data current-state current-visited]
+  ;; We are going to returns states for neighbours that we
+  ;; can visit from the current state.
+  ;;
+  ;; We have the curent visisted because there is no point returning new states
+  ;; with the same no-turn-count and address (we know the heat loss will be
+  ;; higher because we sorted unvisited each time we dequeue)
+  (let [[current-state-address {direction :direction current-heat-loss :current-heat-loss no-turn-count :no-turn-count}] current-state]
+    (filter (fn [[check-address {check-direction :direction
+                             check-current-heat-loss :current-heat-loss
+                             check-no-turn-count :no-turn-count}]]
+              (not (contains? current-visited [check-address check-no-turn-count])))
+            (allowed-states-at-location-in-direction data [current-state-address direction no-turn-count current-heat-loss]))))
 
 (defn dijkstra [data]
-  (let [columns                   (count (first data))
-        rows                      (count data)
-        unvisited                 (into {} (mapcat identity (map (fn [row] (map (fn [column] [[row column] []]) (range 0 columns))) (range 0 rows))))
-        current-start-node        start-node
-        unvisited-with-start-node (assoc unvisited current-start-node start-node-distances)]
-    (loop [current-unvisited unvisited-with-start-node
-           ;; don't really need this but keeping it for debugging.
-           current-visited   {}
-           current-node      (smallest-finite-distance current-unvisited)
-           i                 0]
-      (if (or (finished-dijkstra? data current-node)
-              ;; escape valve
-              ;; (= i 10)
-              )
-        current-node
-        (let [new-visited   (apply assoc current-visited current-node)
-              new-unvisited (apply dissoc (dijkstra-update-neighbours data current-unvisited current-node) current-node)]
-          (recur new-unvisited new-visited (smallest-finite-distance new-unvisited) (inc i)))))))
+  (loop [current-unvisited start-states
+         current-visited   #{}
+         current-state     (first (sorted-states current-unvisited))
+         i                 0]
+    (if (or (finished-dijkstra? data current-state)
+            ;; escape valve
+            ;; (= i 30000)
+            )
+      current-state
+      (let [[current-state-address {direction :direction current-heat-loss :current-heat-loss no-turn-count :no-turn-count}] current-state
+            new-visited   (conj current-visited [current-state-address no-turn-count])
+            new-unvisited (sorted-states (apply conj (rest current-unvisited) (dijkstra-new-neighbour-states data current-state new-visited)))
+            next-state (first new-unvisited)]
+        ;; (println "new-visited")
+        ;; (println new-visited)
+        ;; (println "new-unvisited")
+        ;; (println new-unvisited)
+        (recur new-unvisited new-visited next-state (inc i))))))
