@@ -3,6 +3,9 @@
 (require '[clojure.math.combinatorics :as combo])
 (require '[clojure.set :as set])
 (require '[clojure.math :refer [ceil floor round pow]])
+(require '[clojure.data.priority-map :as pm])
+
+(import 'java.util.PriorityQueue)
 
 (defn in? [coll elm] (some #(= elm %) coll))
 
@@ -45,16 +48,15 @@
                              :right [:right :up :down]
                              :up [:left :right :up]
                              :down [:left :right :down])
-        filtered-allowed-directions (filter (fn [allowed-direction] (if (>= (inc no-turn-count) max-moves-without-turns)
-                                                                          ;; remove the current direction
-                                                                      (not= allowed-direction current-direction)
-                                                                          ;; if we haven't hit the limit, we just keep all the directions
-                                                                      true)) allowed-directions)]
-    (map (fn [[row column direction]] [[row column] {:no-turn-count (if (= current-direction direction)
-                                                                      (inc no-turn-count)
-                                                                      0)
+        filtered-allowed-directions (filter (fn [allowed-direction]
+                                              (if (>= (inc no-turn-count) max-moves-without-turns)
+                                                ;; remove the current direction
+                                                (not= allowed-direction current-direction)
+                                                ;; if we haven't hit the limit, we just keep all the directions
+                                                true)) allowed-directions)]
+    (map (fn [[row column direction]] [[row column] {:no-turn-count (if (= current-direction direction) (inc no-turn-count) 0)
                                                      :direction direction
-                                                     :current-heat-loss (+ heat-loss (Character/getNumericValue (nth (nth data row) column)))}])
+                                                     :current-heat-loss (+ heat-loss (nth (nth data row) column))}])
          (filter
           ;; filter new moves to make sure they are in range
           (fn [[row column _]] (row-column-in-range data row column))
@@ -62,17 +64,6 @@
           (map (fn [new-direction] (row-and-column-in-direction row column new-direction)) filtered-allowed-directions)))))
 
 (def allowed-states-at-location-in-direction (memoize core-allowed-states-at-location-in-direction))
-
-(defn sorted-states [unvisisted]
-  ;; Run through our unvisited nodes and sort by the smallest finite
-  ;; distance
-  (sort (fn [first last] (let [[first-address {first-direction :direction
-                                               first-current-heat-loss :current-heat-loss
-                                               first-no-turn-count :no-turn-count}] first
-                               [last-address {last-direction :direction
-                                              last-current-heat-loss :current-heat-loss
-                                              last-no-turn-count :no-turn-count}] last]
-                           (< first-current-heat-loss last-current-heat-loss))) unvisisted))
 
 ;; Dijkstra's
 
@@ -137,31 +128,62 @@
   ;; can visit from the current state.
   ;;
   ;; We have the curent visisted because there is no point returning new states
-  ;; with the same no-turn-count and address (we know the heat loss will be
+  ;; with a larger no-turn-count for an address (we know the heat loss will be
   ;; higher because we sorted unvisited each time we dequeue)
   (let [[current-state-address {direction :direction current-heat-loss :current-heat-loss no-turn-count :no-turn-count}] current-state]
-    (filter (fn [[check-address {check-direction :direction
-                             check-current-heat-loss :current-heat-loss
-                             check-no-turn-count :no-turn-count}]]
-              (not (contains? current-visited [check-address check-no-turn-count])))
+    (filter (fn [new-allowed-state]
+              (let [[check-address {check-direction :direction
+                                    check-current-heat-loss :current-heat-loss
+                                    check-no-turn-count :no-turn-count}] new-allowed-state
+                    previous-no-turn-count (or (current-visited check-address) ##Inf)]
+                (< check-no-turn-count previous-no-turn-count)))
             (allowed-states-at-location-in-direction data [current-state-address direction no-turn-count current-heat-loss]))))
 
+(defn update-visited [visited current-state-address no-turn-count]
+  (let [smallest-no-turn-count (or (visited current-state-address) ##Inf)]
+    (if (< no-turn-count smallest-no-turn-count)
+      (assoc visited current-state-address no-turn-count)
+      visited
+    )))
+
 (defn dijkstra [data]
-  (loop [current-unvisited start-states
-         current-visited   #{}
-         current-state     (first (sorted-states current-unvisited))
-         i                 0]
-    (if (or (finished-dijkstra? data current-state)
-            ;; escape valve
-            ;; (= i 30000)
-            )
-      current-state
-      (let [[current-state-address {direction :direction current-heat-loss :current-heat-loss no-turn-count :no-turn-count}] current-state
-            new-visited   (conj current-visited [current-state-address no-turn-count])
-            new-unvisited (sorted-states (apply conj (rest current-unvisited) (dijkstra-new-neighbour-states data current-state new-visited)))
-            next-state (first new-unvisited)]
-        ;; (println "new-visited")
-        ;; (println new-visited)
-        ;; (println "new-unvisited")
-        ;; (println new-unvisited)
-        (recur new-unvisited new-visited next-state (inc i))))))
+  ;; using this mutable java priority queue thing is weird and feels very wrong in Clojure
+  (let [mutable-unvisited-queue (PriorityQueue. 196000 (reify java.util.Comparator
+                                                         (compare [_ [first-address {first-direction :direction
+                                                                                     first-current-heat-loss :current-heat-loss
+                                                                                     first-no-turn-count :no-turn-count}]
+                                                                   [last-address {last-direction :direction
+                                                                                  last-current-heat-loss :current-heat-loss
+                                                                                  last-no-turn-count :no-turn-count}]]
+                                                           (compare first-current-heat-loss last-current-heat-loss))))
+        parsed-data (map (fn [line] (map (fn [chr] (Character/getNumericValue chr)) line)) data)]
+
+    ;; before we start we have to putate our mutable-unvisited-queue with our start states
+    (.add mutable-unvisited-queue (nth start-states 0))
+    (.add mutable-unvisited-queue (nth start-states 1))
+
+    (loop [current-visited   {}
+           current-state     (.poll mutable-unvisited-queue)
+           i                 0
+           [max-row max-column]    [0 0]]
+      (if (or (finished-dijkstra? parsed-data current-state)
+              ;; escape valve
+              ;; (= i 10000)
+              )
+        current-state
+        (let [[current-state-address {direction :direction current-heat-loss :current-heat-loss no-turn-count :no-turn-count}] current-state
+              [row column] current-state-address
+              [new-max-row new-max-column] [(max max-row row) (max max-column column)]
+              new-visited   (update-visited current-visited current-state-address no-turn-count)]
+
+          ;; (when (or (> new-max-row max-row) (> new-max-column max-column)) (println "New max" new-max-row new-max-column row column))
+          ;; (when (= 0 (mod current-heat-loss 100)) (println current-heat-loss))
+          ;; (println (count new-visited))
+
+          ;; mutate our mutable-unvisisted with the new neighbour states
+          (doseq [new-state (dijkstra-new-neighbour-states parsed-data current-state new-visited)]
+            (when (not (.contains mutable-unvisited-queue new-state))
+              (.add mutable-unvisited-queue new-state)))
+
+          (recur new-visited (.poll mutable-unvisited-queue) (inc i) [new-max-row new-max-column]))))))
+
